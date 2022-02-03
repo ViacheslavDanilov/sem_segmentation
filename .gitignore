@@ -133,3 +133,6 @@ dataset/
 
 # PyCharm settings
 .idea
+
+# Logs directory
+logs/
