@@ -11,24 +11,57 @@ def get_class_palette(
         class_name: str,
 ) -> List[int]:
 
-    # TODO: add classes and their palettes
     try:
         mapping_dict = {
-            'class_1': [123, 111, 125],
-            'class_2': [23, 75, 371],
+            'Capillary lumen': {
+                'id': 1,
+                'color': [105, 45, 33],
+            },
+            'Capillary wall': {
+                'id': 2,
+                'color': [196, 156, 148],
+            },
+            'Venule lumen': {
+                'id': 3,
+                'color': [31, 119, 180],
+            },
+            'Venule wall': {
+                'id': 4,
+                'color': [174, 199, 232],
+            },
+            'Arteriole lumen': {
+                'id': 5,
+                'color': [212, 0, 2],
+            },
+            'Arteriole wall': {
+                'id': 6,
+                'color': [255, 124, 121],
+            },
+            'Endothelial cell': {
+                'id': 7,
+                'color': [227, 119, 194],
+            },
+            'Pericyte': {
+                'id': 8,
+                'color': [150, 240, 52],
+            },
+            'SMC': {
+                'id': 9,
+                'color': [144, 19, 254],
+            },
         }
         return mapping_dict[class_name]
     except Exception as e:
         raise ValueError('Unrecognized class_name: {:s}'.format(class_name))
 
 
-def read_project_as_dataframe(
+def read_sly_project(
     project_dir: str,
     include_dirs: Optional[List[str]] = None,
     exclude_dirs: Optional[List[str]] = None
 ) -> pd.DataFrame:
 
-    logging.info('Processing of {project_dir}...')
+    logging.info('Processing of {:s}'.format(project_dir))
     assert os.path.exists(project_dir) and os.path.isdir(project_dir), 'Wrong project dir: {}'.format(project_dir)
     project = sly.Project(
         directory=project_dir,
@@ -71,11 +104,12 @@ def read_project_as_dataframe(
             dataset_names.append(dataset_name)
 
     df = pd.DataFrame.from_dict({
+        'dataset': dataset_names,
         'filename': filenames,
         'img_path': img_paths,
         'mask_path': mask_paths,
         'ann_path': ann_paths,
-        'dataset_name': dataset_names
+
     })
 
     return df
