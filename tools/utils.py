@@ -1,9 +1,16 @@
 import os
 import logging
 from pathlib import Path
-from typing import List, Union, Optional
+from typing import List, Tuple, Dict, Union, Optional
 
+import cv2
+import numpy as np
 from glob import glob
+
+try:
+    import pytesseract
+except ModuleNotFoundError:
+    pass
 
 
 def get_file_list(
@@ -28,10 +35,7 @@ def get_file_list(
                 file_ext = Path(file).suffix
                 file_ext = file_ext.lower()
                 dir_name = os.path.basename(root)
-                if (
-                    file_ext in ext_list
-                    and include_template in dir_name
-                ):
+                if file_ext in ext_list and include_template in dir_name:
                     file_path = os.path.join(root, file)
                     all_files.append(file_path)
     all_files.sort()
@@ -64,3 +68,34 @@ def get_dir_list(
 
         dir_list.append(series_dir)
     return dir_list
+
+
+def extract_modality_info(
+    img: np.ndarray,
+    x_lims: Tuple[int] = (0.0, 0.5),
+    y_lims: Tuple[int] = (0.9375, 1.0),
+) -> Dict:
+
+    keys = [
+        'energy',
+        'magnification',
+    ]
+    info = {key: float('nan') for key in keys}
+
+    try:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        y1 = int(y_lims[0] * img.shape[0])
+        y2 = int(y_lims[1] * img.shape[0])
+        x1 = int(x_lims[0] * img.shape[1])
+        x2 = int(x_lims[1] * img.shape[1])
+        img_info = img[y1:y2, x1:x2]
+        img_info_inv = 255 - img_info
+        txt_info = pytesseract.image_to_string(img_info_inv)
+        txt_info = txt_info.strip().split()
+        info['energy'] = txt_info[1]
+        info['magnification'] = txt_info[2]
+
+    except Exception as e:
+        logging.debug('Failed to retrieve modality info')
+
+    return info
