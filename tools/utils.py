@@ -16,13 +16,15 @@ except ModuleNotFoundError:
 def get_file_list(
     src_dirs: Union[List[str], str],
     ext_list: Union[List[str], str],
-    include_template: str = '',
+    dir_name_template: str = '',
+    filename_template: str = '',
 ) -> List[str]:
     """
     Args:
         src_dirs: directory(s) with files inside
         ext_list: extension(s) used for a search
-        include_template: include directories with this template
+        dir_name_template: include directories with this template
+        filename_template: include files with this template
     Returns:
         all_files: a list of file paths
     """
@@ -35,7 +37,12 @@ def get_file_list(
                 file_ext = Path(file).suffix
                 file_ext = file_ext.lower()
                 dir_name = os.path.basename(root)
-                if file_ext in ext_list and include_template in dir_name:
+                if (
+                        file_ext in ext_list
+                        and dir_name_template in dir_name
+                        and filename_template in file
+
+                ):
                     file_path = os.path.join(root, file)
                     all_files.append(file_path)
     all_files.sort()
