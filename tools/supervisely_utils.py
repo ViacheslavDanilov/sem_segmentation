@@ -111,11 +111,11 @@ def read_sly_project(
             dataset_names.append(dataset_name)
 
     df = pd.DataFrame.from_dict({
-        'dataset': dataset_names,
-        'filename': filenames,
         'img_path': img_paths,
         'ann_path': ann_paths,
         'mask_path': mask_paths,
+        'dataset': dataset_names,
+        'filename': filenames,
     })
 
     return df
