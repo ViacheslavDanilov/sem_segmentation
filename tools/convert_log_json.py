@@ -7,14 +7,18 @@ import pandas as pd
 if __name__ == "__main__":
 
     COLUMNS = [
+        'mode',
+        'epoch',
+        'iter',
+        'lr',
         'memory',
         'data_time',
+        'time',
         'decode.loss_ce',
         'decode.acc_seg',
         'aux.loss_ce',
         'aux.acc_seg',
         'loss',
-        'time',
     ]
 
     parser = argparse.ArgumentParser(description='Convert JSON logs to CSV')
