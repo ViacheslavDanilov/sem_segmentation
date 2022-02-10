@@ -5,7 +5,7 @@ import base64
 import logging
 from PIL import Image
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Tuple, Optional
 
 import cv2
 import numpy as np
@@ -20,6 +20,10 @@ def get_class_meta(
 
     try:
         mapping_dict = {
+            'Background': {
+                'id': 0,
+                'color': [128, 128, 128],
+            },
             'Capillary lumen': {
                 'id': 1,
                 'color': [189, 16, 224],
@@ -60,6 +64,19 @@ def get_class_meta(
         return mapping_dict[class_name]
     except Exception as e:
         raise ValueError('Unrecognized class_name: {:s}'.format(class_name))
+
+
+def get_palette(
+        class_names: Tuple[str],
+) -> List[List[int]]:
+
+    palette = []
+    for class_name in class_names:
+        class_meta = get_class_meta(class_name)
+        class_palette = class_meta['color']
+        palette.append(class_palette)
+
+    return palette
 
 
 def read_sly_project(
@@ -159,7 +176,8 @@ def insert_mask(
 ) -> np.ndarray:
 
     x, y = origin
-    obj_mask_height, obj_mask_width = obj_mask.shape[:-1]
+    obj_mask_height = obj_mask.shape[0]
+    obj_mask_width = obj_mask.shape[1]
 
     for idx_y in range(obj_mask_height):
         for idx_x in range(obj_mask_width):
