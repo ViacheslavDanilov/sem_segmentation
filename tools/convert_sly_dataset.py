@@ -1,8 +1,8 @@
 import json
 import argparse
-from typing import Tuple
 
 from tqdm import tqdm
+from sklearn.utils import class_weight
 from sklearn.model_selection import train_test_split
 
 from tools.supervisely_utils import *
@@ -26,8 +26,8 @@ def log_dataset(
 
 def main(
         df_project: pd.DataFrame,
-        classes: Tuple[str],
-        mask_type: str,
+        class_names: Tuple[str],
+        exclude_empty_masks: bool,
         use_smoothing: bool,
         train_size: float,
         test_size: float,
@@ -38,12 +38,14 @@ def main(
     val_size = 1 - train_size - test_size
     assert train_size + val_size + test_size == 1, 'The sum of subset ratios must be equal to 1'
 
-    logger.info('Classes              : {}'.format(classes))
-    logger.info('Number of classes    : {}'.format(len(classes)))
+    logger.info('Classes              : {}'.format(class_names))
+    logger.info('Number of classes    : {}'.format(len(class_names)))
+    logger.info('Exclude empty masks  : {}'.format(exclude_empty_masks))
     logger.info('Output directory     : {}'.format(save_dir))
     logger.info('Train/Val/Test split : {:.2f} / {:.2f} / {:.2f}'.format(train_size, val_size, test_size))
     datasets = list(set(df_project.dataset))
 
+    # Split dataset into train, val and test subsets
     df_train = pd.DataFrame()
     df_val = pd.DataFrame()
     df_test = pd.DataFrame()
@@ -78,7 +80,7 @@ def main(
     df_final.to_excel(save_path, sheet_name='Dataset', index=False, startrow=0, startcol=0)
     logger.info('Dataset metadata save to {:s}'.format(save_path))
 
-    # Create dataset dirs
+    # Create subset dirs
     subset_dirs = {
         'img_dir': {},
         'ann_dir': {},
@@ -89,7 +91,8 @@ def main(
             subset_dirs[ds_dir][subset_dir] = _dir
             os.makedirs(_dir) if not os.path.isdir(_dir) else False
 
-    # Iterate over annotations
+    # Iterate over image-annotation pairs
+    data = np.array([], dtype=np.uint8)
     for idx, row in tqdm(df_final.iterrows(), desc='Image processing', unit=' images'):
         filename = row['filename']
         img_path = row['img_path']
@@ -101,31 +104,21 @@ def main(
             ann_data['size']['width'],
         )
 
-        subset = row['subset']
-        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-        img_save_path = os.path.join(save_dir, 'img_dir', subset, '{:s}.png'.format(filename))
-        cv2.imwrite(img_save_path, img)
-
         # Iterate over objects
-        mask = np.zeros((*img_size, 3), dtype=np.uint8)
+        mask = np.zeros(img_size, dtype=np.uint8)
+        palette = get_palette(class_names)
+
         for obj in ann_data['objects']:
             class_name = obj['classTitle']
-            if class_name in classes:
+            if class_name in class_names:
                 class_meta = get_class_meta(class_name)
                 class_id = class_meta['id']
-                class_color = class_meta['color']
                 obj_mask64 = obj['bitmap']['data']
                 obj_mask = base64_to_mask(obj_mask64)
                 if use_smoothing:
                     obj_mask = smooth_mask(obj_mask)
-                obj_mask = cv2.cvtColor(obj_mask, cv2.COLOR_GRAY2RGB)
                 obj_mask = obj_mask.astype(float)
-                if mask_type == 'indexed':                          # TODO: Validate small objects np.max(obj_mask) == 0
-                    obj_mask *= 25*class_id/np.max(obj_mask)        # TODO: Remove 25 after debugging
-                elif mask_type == 'color':
-                    obj_mask *= class_color/np.max(obj_mask)
-                else:
-                    raise ValueError('Invalid mask type {:s}'.format(mask_type))
+                obj_mask *= class_id/np.max(obj_mask)
                 obj_mask = obj_mask.astype(np.uint8)
 
                 mask = insert_mask(
@@ -133,13 +126,50 @@ def main(
                     obj_mask=obj_mask,
                     origin=obj['bitmap']['origin'],
                 )
+        logger.debug('Empty mask: {:s}'.format(Path(filename).name))
 
-        mask_save_path = os.path.join(save_dir, 'ann_dir', subset, '{:s}_{:s}.png'.format(filename, mask_type))
-        cv2.imwrite(mask_save_path, mask)
+        if (
+                np.sum(mask) == 0
+                and exclude_empty_masks
+        ):
+            pass
+        else:
+            subset = row['subset']
+
+            # Save image
+            img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            img_save_path = os.path.join(save_dir, 'img_dir', subset, '{:s}.png'.format(filename))
+            cv2.imwrite(img_save_path, img)
+
+            # Accumulate masks for class weight calculation
+            mask_vector = np.concatenate(mask)
+            data = np.append(data, mask_vector, axis=0)
+
+            # Save colored mask
+            mask = Image.fromarray(mask).convert('P')
+            mask.putpalette(np.array(palette, dtype=np.uint8))
+            mask_save_path = os.path.join(save_dir, 'ann_dir', subset, '{:s}.png'.format(filename))
+            mask.save(mask_save_path)
+
+    # Compute class weights
+    class_weights = class_weight.compute_class_weight(
+        y=data,
+        classes=np.unique(data),
+        class_weight='balanced',
+    )
+    class_weights = list(class_weights)
+    class_weights = [round(x, 3) for x in class_weights]
+    logger.info('')
+    logging.info('Class weights: {}'.format(class_weights))
+    class_weights_path = os.path.join(save_dir, 'class_weights.txt')
+    with open(class_weights_path, "w") as f:
+        f.write(str(class_names) + '\n')
+        f.write(str(tuple(class_weights)))
 
 
 if __name__ == '__main__':
 
+    os.makedirs('logs', exist_ok=True)
     logging.basicConfig(
         format='%(asctime)s - %(levelname)s - %(message)s',
         datefmt='%d.%m.%Y %I:%M:%S',
@@ -148,22 +178,20 @@ if __name__ == '__main__':
         level=logging.INFO,
     )
 
-    CLASSES = [
-        # 'Capillary lumen',
-        # 'Capillary wall',
-        # 'Venule lumen',
-        # 'Venule wall',
-        # 'Arteriole lumen',
-        # 'Arteriole wall',
-        'Endothelial cell',
-        'Pericyte',
-        'SMC',
-    ]
+    CLASSES = (
+        'Background',
+        'Capillary lumen',
+        'Capillary wall',
+        'Venule lumen',
+        'Venule wall',
+        'Arteriole lumen',
+        'Arteriole wall',
+    )
 
     parser = argparse.ArgumentParser(description='Dataset conversion')
     parser.add_argument('--project_dir', required=True, type=str)
-    parser.add_argument('--classes', nargs='+', default=CLASSES, type=str)
-    parser.add_argument('--mask_type', default='indexed', type=str, help='indexed or color')
+    parser.add_argument('--class_names', nargs='+', default=CLASSES, type=str)
+    parser.add_argument('--exclude_empty_masks', action='store_true')
     parser.add_argument('--use_smoothing', action='store_true')
     parser.add_argument('--include_dirs', nargs='+', default=None, type=str)
     parser.add_argument('--exclude_dirs', nargs='+', default=None, type=str)
@@ -181,8 +209,8 @@ if __name__ == '__main__':
 
     main(
         df_project=df,
-        classes=tuple(args.classes),
-        mask_type=args.mask_type,
+        class_names=tuple(args.class_names),
+        exclude_empty_masks=args.exclude_empty_masks,
         use_smoothing=args.use_smoothing,
         train_size=args.train_size,
         test_size=args.test_size,
@@ -190,4 +218,5 @@ if __name__ == '__main__':
         save_dir=args.save_dir,
     )
 
-    logger.info('Dataset conversion complete!')
+    logger.info('')
+    logger.info('Dataset conversion complete')
