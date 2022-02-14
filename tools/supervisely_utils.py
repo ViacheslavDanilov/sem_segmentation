@@ -5,7 +5,7 @@ import base64
 import logging
 from PIL import Image
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import List, Tuple, Optional
 
 import cv2
 import numpy as np
@@ -14,52 +14,22 @@ import supervisely_lib as sly
 from scipy.ndimage import binary_opening, binary_fill_holes
 
 
-def get_class_meta(
+def get_class_color(
         class_name: str,
-) -> Dict:
+) -> List[int]:
 
     try:
         mapping_dict = {
-            'Background': {
-                'id': 0,
-                'color': [128, 128, 128],
-            },
-            'Capillary lumen': {
-                'id': 1,
-                'color': [189, 16, 224],
-            },
-            'Capillary wall': {
-                'id': 2,
-                'color': [139, 87, 42],
-            },
-            'Venule lumen': {
-                'id': 3,
-                'color': [192, 220, 252],
-            },
-            'Venule wall': {
-                'id': 4,
-                'color': [74, 144, 226],
-            },
-            'Arteriole lumen': {
-                'id': 5,
-                'color': [250, 177, 186],
-            },
-            'Arteriole wall': {
-                'id': 6,
-                'color': [208, 2, 27],
-            },
-            'Endothelial cell': {
-                'id': 7,
-                'color': [248, 231, 28],
-            },
-            'Pericyte': {
-                'id': 8,
-                'color': [150, 240, 52],
-            },
-            'SMC': {
-                'id': 9,
-                'color': [144, 19, 254],
-            },
+            'Background': [128, 128, 128],
+            'Capillary lumen': [105, 45, 33],
+            'Capillary wall': [196, 156, 148],
+            'Venule lumen': [31, 119, 180],
+            'Venule wall': [174, 199, 232],
+            'Arteriole lumen': [212, 0, 2],
+            'Arteriole wall': [255, 124, 121],
+            'Endothelial cell': [227, 119, 194],
+            'Pericyte': [150, 240, 52],
+            'SMC': [144, 19, 254],
         }
         return mapping_dict[class_name]
     except Exception as e:
@@ -72,9 +42,8 @@ def get_palette(
 
     palette = []
     for class_name in class_names:
-        class_meta = get_class_meta(class_name)
-        class_palette = class_meta['color']
-        palette.append(class_palette)
+        class_color = get_class_color(class_name)
+        palette.append(class_color)
 
     return palette
 
@@ -163,7 +132,8 @@ def base64_to_mask(s: str) -> np.ndarray:
 def smooth_mask(
         binary_mask: np.ndarray,
 ) -> np.ndarray:
-    binary_mask = binary_fill_holes(binary_mask, structure=None)
+    # kernel = cv2.getStructuringElement(shape=cv2.MORPH_ELLIPSE, ksize=(5, 5))
+    # binary_mask = binary_fill_holes(binary_mask, structure=None)                      # FIXME: fills big holes
     binary_mask = binary_opening(binary_mask, structure=None)
     binary_mask = 255 * binary_mask.astype(np.uint8)
     return binary_mask
