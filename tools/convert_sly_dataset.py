@@ -111,8 +111,7 @@ def main(
         for obj in ann_data['objects']:
             class_name = obj['classTitle']
             if class_name in class_names:
-                class_meta = get_class_meta(class_name)
-                class_id = class_meta['id']
+                class_id = class_names.index(class_name)
                 obj_mask64 = obj['bitmap']['data']
                 obj_mask = base64_to_mask(obj_mask64)
                 if use_smoothing:
@@ -162,7 +161,7 @@ def main(
     logger.info('')
     logging.info('Class weights: {}'.format(class_weights))
     class_weights_path = os.path.join(save_dir, 'class_weights.txt')
-    with open(class_weights_path, "w") as f:
+    with open(class_weights_path, 'w') as f:
         f.write(str(class_names) + '\n')
         f.write(str(tuple(class_weights)))
 
