@@ -24,7 +24,8 @@ def main(
         'energy',
         'magnification',
         'class',
-        'class_id',
+        'origin_x',
+        'origin_y',
         'obj_height',
         'obj_width',
         'area_abs',
@@ -50,9 +51,8 @@ def main(
         for obj in ann_data['objects']:
             obj_meta = {key: float('nan') for key in keys}
             class_name = obj['classTitle']
-            class_meta = get_class_meta(class_name)
-            class_id = class_meta['id']
             obj_mask64 = obj['bitmap']['data']
+            obj_origin = obj['bitmap']['origin']
             obj_mask = base64_to_mask(obj_mask64)
             area_abs = cv2.countNonZero(obj_mask)
             area_rel = area_abs / (img_height * img_width)
@@ -66,7 +66,8 @@ def main(
             obj_meta['energy'] = modality_info['energy']
             obj_meta['magnification'] = modality_info['magnification']
             obj_meta['class'] = class_name
-            obj_meta['class_id'] = class_id
+            obj_meta['origin_x'] = obj_origin[0]
+            obj_meta['origin_y'] = obj_origin[1]
             obj_meta['obj_height'] = obj_mask.shape[0]
             obj_meta['obj_width'] = obj_mask.shape[1]
             obj_meta['area_abs'] = area_abs
