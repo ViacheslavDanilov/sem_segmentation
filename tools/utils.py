@@ -1,6 +1,7 @@
 import os
 import logging
 from pathlib import Path
+from datetime import datetime
 from typing import List, Tuple, Dict, Union, Optional
 
 import cv2
@@ -106,3 +107,8 @@ def extract_modality_info(
         logging.debug('Failed to retrieve modality info')
 
     return info
+
+
+def get_current_time():
+    current_time = datetime.now()
+    return current_time.strftime('%Y-%m-%dT%H:%M:%SZ')
