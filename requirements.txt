@@ -1,0 +1,16 @@
+numpy=1.21.2
+matplotlib==3.5.1
+mmsegmentation=0.21.0
+mmcv-full==1.4.4
+opencv-python==4.5.5.62
+openpyxl==3.0.9
+pandas==1.4.0
+Pillow==8.4.0
+pytesseract==0.3.8
+scikit-learn==1.0.2
+scipy==1.8.0
+supervisely==6.6.3
+torch==1.10.2
+torchaudio==0.10.2
+torchvision==0.11.3
+tqdm==4.62.3
