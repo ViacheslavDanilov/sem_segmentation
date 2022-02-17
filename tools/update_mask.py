@@ -17,14 +17,18 @@ def main(
         df_project: pd.DataFrame,
         output_dir: str,
 ) -> None:
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    shutil.copyfile(f'{input_dir}/meta.json', f'{output_dir}/meta.json')
+    shutil.copyfile(f'{input_dir}/obj_class_to_machine_color.json', f'{output_dir}/obj_class_to_machine_color.json')
+
     datasets = list(set(df_project.dataset))
     for dataset in datasets:
         df_dataset = df_project[df_project.dataset == dataset]
-        if not os.path.exists(output_dir):
+        if not os.path.exists(os.path.join(output_dir, dataset)):
             os.makedirs(os.path.join(output_dir, dataset, 'img'))
             os.makedirs(os.path.join(output_dir, dataset, 'ann'))
-        shutil.copyfile(f'{input_dir}/meta.json', f'{output_dir}/meta.json')
-        shutil.copyfile(f'{input_dir}/obj_class_to_machine_color.json', f'{output_dir}/obj_class_to_machine_color.json')
 
         for idx, row in tqdm(df_dataset.iterrows(), desc='Updating Supervisely dataset', unit=' ann'):
             filename = row['filename']
@@ -47,7 +51,8 @@ def main(
                         filled_mask = 255 * filled_mask.astype(np.uint8)
                         lumen_mask = filled_mask - wall_mask
 
-                        try:
+                        # Check size lumen_mask
+                        if len(np.nonzero(lumen_mask)[0]) > 5:
                             # Append a wall object
                             new_objects.append(obj)
 
@@ -73,13 +78,11 @@ def main(
                                     }
                                 }
                             )
-
-                        except Exception as e:
-                            logger.info(f'The object {obj["classTitle"]} has no cavity. Filename: {filename}')
+                        else:
+                            logger.warning(f'The object {obj["classTitle"]} has no cavity, filename {filename}')
 
                     elif obj['classTitle'] in class_ids:
                         continue
-
                     else:
                         new_objects.append(obj)
 
@@ -93,13 +96,13 @@ def main(
 if __name__ == '__main__':
 
     os.makedirs('logs', exist_ok=True)
-    logging.basicConfig(
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%d.%m.%Y %I:%M:%S',
-        filename='logs/{:s}.log'.format(Path(__file__).stem),
-        filemode='w',
-        level=logging.INFO,
-    )
+    # logging.basicConfig(
+    #     format='%(asctime)s - %(levelname)s - %(message)s',
+    #     datefmt='%d.%m.%Y %I:%M:%S',
+    #     filename='logs/{:s}.log'.format(Path(__file__).stem),
+    #     filemode='w',
+    #     level=logging.INFO,
+    # )
 
     CLASS_GROUPS = {
         'Capillary wall': 'Capillary lumen',
