@@ -67,7 +67,7 @@ class LoadImage:
         return results
 
 
-def inference_segmentor(model, img):
+def inference_segmentor(model, img, samples_per_gpu=1):
     """Inference image(s) with the segmentor.
 
     Args:
@@ -84,9 +84,12 @@ def inference_segmentor(model, img):
     test_pipeline = [LoadImage()] + cfg.data.test.pipeline[1:]
     test_pipeline = Compose(test_pipeline)
     # prepare data
-    data = dict(img=img)
-    data = test_pipeline(data)
-    data = collate([data], samples_per_gpu=1)
+    dataset = []
+    for im in img:
+        data = dict(img=im)
+        data = test_pipeline(data)
+        dataset.append(data)
+    data = collate(dataset, samples_per_gpu=samples_per_gpu)
     if next(model.parameters()).is_cuda:
         # scatter to specified GPU
         data = scatter(data, [device])[0]

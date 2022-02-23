@@ -1,87 +1,81 @@
+import os
+import argparse
+import numpy as np
 from typing import List
 
-
+import cv2
 import mmcv
-import argparse
 from glob import glob
-from mmcv.utils import Config
-from mmcv.runner import load_checkpoint, wrap_fp16_model
 
-from mmseg.models import build_segmentor
-from mmseg.apis import inference_segmentor, show_result_pyplot
+from mmseg.apis import init_segmentor, inference_segmentor
 
 
 def main(
         args,
         palette: List[List[int]],
-):
+) -> None:
 
-    cfg = Config.fromfile(args.config)
-    model = init_model(
-        args=args,
-        cfg=cfg,
-        palette=palette,
-    )
+    if not os.path.exists(args.save_dir):
+        os.makedirs(os.path.join(args.save_dir, 'mask'))
+        os.makedirs(os.path.join(args.save_dir, 'union'))
 
-    predict_model(
+    model = init_segmentor(args.config, args.checkpoint, device='cuda:0') # TODO: доработать момент с выбором девайса
+
+    images_path = glob(args.images_path + '/*.[pj][npe]*')
+    images = []
+    for idx, img_path in enumerate(images_path):
+        img = mmcv.imread(img_path)
+        if args.use_patchify_images:
+            images = np.hstack(images, 0) # TODO: добавить функцию нарезки по патчам
+        else:
+            images.append(img)
+
+    results = predict_model(
         model=model,
-        images_path=glob(args.images_path + '/*.[pj][npe]*'),
+        images=images,
         batch_size=args.batch_size,
     )
 
-
-def init_model(
-        args,
-        cfg,
-        palette: List[List[int]]):
-    if args.gpu_id is not None:
-        cfg.gpu_ids = [args.gpu_id]
-
-    cfg.model.train_cfg = None
-    model = build_segmentor(cfg.model)
-
-    fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
-        wrap_fp16_model(model)
-
-    checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
-    model.cfg = cfg
-
-    if 'PALETTE' in checkpoint.get('meta', {}):
-        model.PALETTE = checkpoint['meta']['PALETTE']
-    else:
-        model.PALETTE = palette
-    return model
+    for res, img, img_name in zip(results, images, images_path):
+        if args.use_patchify_images:
+            continue # добавить функцию нарезки по патчам
+        else:
+            img_union = img_mask_union(
+                img=img,
+                mask=res,
+                classes=model.CLASSES,
+                palette=model.PALETTE,
+            )
+            cv2.imwrite(f'{args.save_dir}/union/{os.path.basename(img_name)}', img_union)
+            cv2.imwrite(f'{args.save_dir}/mask/{os.path.basename(img_name)}', res)
 
 
 def predict_model(
         model,
-        images_path: List[str],
-        batch_size,
+        images: List[float],
+        batch_size: int = 1,
 ):
-    predicts = []
-    # TODO: Настроить batch обработку
-    # images_batches = []
-    # images_batch = []
-    # for idx, img_path in enumerate(images_path):
-    #     images_batch.append(mmcv.imread(img_path))
-    #     if idx % batch_size == 0:
-    #         images_batches.append(images_batch)
-    #         images_batch = []
-    # if len(images_batch) > 0:
-    #     images_batches.append(images_batch)
-    #
-    # for img_batch in images_batches:
-    #     result = inference_segmentor(model, img_batch)
-    #     predicts += result
-    for img_path in images_path:
-        img = mmcv.imread(img_path)
-        res = inference_segmentor(model, img)
-        predicts.append(res)
-    # plt.figure(figsize=(8, 6))
-    # show_result_pyplot(model, img, result, PALETTE)
 
-    # return mask, union
+    results = inference_segmentor(
+        model=model,
+        img=images,
+        samples_per_gpu=batch_size,
+    )
+    return results
+
+
+def img_mask_union(
+        img,
+        mask,
+        classes,
+        palette,
+):
+    for idx, (_, color) in enumerate(zip(classes, palette)):
+        color_mask = np.zeros(mask.shape)
+        color_mask[mask == idx] = 255
+        img = cv2.addWeighted(img, 1, (cv2.cvtColor(color_mask.astype('uint8'), cv2.COLOR_GRAY2RGB)
+                                       * color).astype(np.uint8), 0.45, 0)
+    return img
 
 
 if __name__ == "__main__":
@@ -100,7 +94,8 @@ if __name__ == "__main__":
     parser.add_argument('--checkpoint', required=True, type=str)
     parser.add_argument('--batch_size', type=int, default=2)
     parser.add_argument('--images_path', required=True, type=str)
-    parser.add_argument('--output_dir', required=True, type=str)
+    parser.add_argument('--save_dir', required=True, type=str)
+    parser.add_argument('--use_patchify_images', action='store_true')
     parser.add_argument('--gpu-id', type=int, default=0,
                         help='id of gpu to use (only applicable to non-distributed testing)')
 
