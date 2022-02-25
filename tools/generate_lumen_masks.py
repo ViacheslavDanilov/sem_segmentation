@@ -13,7 +13,7 @@ logging.basicConfig(
     datefmt='%d.%m.%Y %I:%M:%S',
     filename='logs/{:s}.log'.format(Path(__file__).stem),
     filemode='w',
-    level=logging.DEBUG,
+    level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
