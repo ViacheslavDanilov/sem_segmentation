@@ -13,7 +13,7 @@ logging.basicConfig(
     datefmt='%d.%m.%Y %I:%M:%S',
     filename='logs/{:s}.log'.format(Path(__file__).stem),
     filemode='w',
-    level=logging.DEBUG,
+    level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,7 @@ def main(
 
     # Iterate over image-annotation pairs
     data = np.array([], dtype=np.uint8)
+    palette = get_palette(class_names)
     for idx, row in tqdm(df_final.iterrows(), desc='Image processing', unit=' images'):
         filename = row['filename']
         img_path = row['img_path']
@@ -114,7 +115,6 @@ def main(
 
         # Iterate over objects
         mask = np.zeros(img_size, dtype=np.uint8)
-        palette = get_palette(class_names)
 
         for obj in ann_data['objects']:
             class_name = obj['classTitle']
@@ -165,13 +165,21 @@ def main(
         class_weight='balanced',
     )
     class_weights = list(class_weights)
-    class_weights = [round(x, 3) for x in class_weights]
+    class_weights = [round(x, 2) for x in class_weights]
     logger.info('')
     logging.info('Class weights: {}'.format(class_weights))
-    class_weights_path = os.path.join(save_dir, 'class_weights.txt')
-    with open(class_weights_path, 'w') as f:
-        f.write(str(class_names) + '\n')
-        f.write(str(tuple(class_weights)))
+
+    class_meta = {}
+    for name, color, weight in zip(class_names, palette, class_weights):
+        _class_meta = {
+            'color': color,
+            'weight': weight,
+        }
+        class_meta[name] = _class_meta
+
+    class_meta_path = os.path.join(save_dir, 'class_meta.json')
+    with open(class_meta_path, 'w') as f:
+        json.dump(class_meta, f)
 
 
 if __name__ == '__main__':
