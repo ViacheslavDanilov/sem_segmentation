@@ -6,6 +6,14 @@ from pathlib import Path
 
 import pandas as pd
 
+os.makedirs('logs', exist_ok=True)
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%d.%m.%Y %I:%M:%S',
+    filename='logs/{:s}.log'.format(Path(__file__).stem),
+    filemode='w',
+    level=logging.DEBUG,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -41,15 +49,6 @@ def main(
 
 
 if __name__ == "__main__":
-
-    os.makedirs('logs', exist_ok=True)
-    logging.basicConfig(
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%d.%m.%Y %I:%M:%S',
-        filename='logs/{:s}.log'.format(Path(__file__).stem),
-        filemode='w',
-        level=logging.INFO,
-    )
 
     columns_common = [
         'mode',
