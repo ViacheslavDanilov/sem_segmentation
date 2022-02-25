@@ -1,6 +1,7 @@
 import os
 import logging
 import argparse
+from PIL import Image
 from pathlib import Path
 from typing import List, Tuple
 
@@ -31,7 +32,8 @@ def main(
     )
 
     for img_path in tqdm(img_paths, desc='Patchify images', unit=' image'):
-        img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
         img_basename = Path(img_path).stem
 
         bboxes = []
@@ -40,9 +42,10 @@ def main(
             y1, y2 = roi.top, roi.top + roi.height
             bboxes.append([x1, y1, x2, y2])
             patch = img[y1:y2, x1:x2]
+            patch = Image.fromarray(patch).convert('P')
             patch_name = f'{img_basename}_patch_{roi_id}.png'
             save_path = os.path.join(save_dir, patch_name)
-            cv2.imwrite(save_path, patch)
+            patch.save(save_path)
 
 
 if __name__ == '__main__':
