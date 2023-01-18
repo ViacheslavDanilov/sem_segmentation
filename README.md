@@ -20,11 +20,10 @@ Step 2: Clone the repository, create a conda environment and install the require
 git clone https://github.com/ViacheslavDanilov/sem_segmentation.git
 cd sem_segmentation
 chmod +x create_env.sh
-./create_env.sh
-pip install -r requirements.txt --no-cache-dir
+source create_env.sh
 ```
 
-Step 3: Initialize the git hooks using the pre-commit framework
+Step 3: Initialize git hooks using the pre-commit framework
 ``` bash
 pre-commit install
 ```
