@@ -1,0 +1,12 @@
+defaults:
+  - main
+  - _self_
+
+# TODO: add custom config vars
+#meta:
+#  your_var_1: data/raw
+#  your_var_2: data/interim
+#  your_var_3: [1000, 1000]
+#  your_var_4: false
+#  your_var_5: image
+#  your_var_6: 15
