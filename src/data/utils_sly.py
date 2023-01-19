@@ -1,21 +1,21 @@
+import base64
 import io
+import logging
 import os
 import zlib
-import base64
-import logging
-from PIL import Image
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
 import pandas as pd
 import supervisely_lib as sly
-from scipy.ndimage import binary_opening, binary_fill_holes
+from PIL import Image
+from scipy.ndimage import binary_fill_holes, binary_opening
 
 
 def get_class_color(
-        class_name: str,
+    class_name: str,
 ) -> List[int]:
 
     try:
@@ -33,11 +33,11 @@ def get_class_color(
         }
         return mapping_dict[class_name]
     except Exception as e:
-        raise ValueError('Unrecognized class_name: {:s}'.format(class_name))
+        raise ValueError(f'Unrecognized class_name: {class_name}')
 
 
 def get_palette(
-        class_names: Tuple[str],
+    class_names: Tuple[str],
 ) -> List[List[int]]:
 
     palette = []
@@ -51,11 +51,13 @@ def get_palette(
 def read_sly_project(
     project_dir: str,
     include_dirs: Optional[List[str]] = None,
-    exclude_dirs: Optional[List[str]] = None
+    exclude_dirs: Optional[List[str]] = None,
 ) -> pd.DataFrame:
 
-    logging.info('Processing of {:s}'.format(project_dir))
-    assert os.path.exists(project_dir) and os.path.isdir(project_dir), 'Wrong project dir: {}'.format(project_dir)
+    logging.info(f'Processing of {project_dir}')
+    assert os.path.exists(project_dir) and os.path.isdir(
+        project_dir,
+    ), f'Wrong project dir: {project_dir}'
     project = sly.Project(
         directory=project_dir,
         mode=sly.OpenMode.READ,
@@ -71,23 +73,19 @@ def read_sly_project(
         dataset_name = dataset.name
         if include_dirs and dataset_name not in include_dirs:
             logging.info(
-                'Skip {:s} because it is not in the include_datasets list'.format(
-                    Path(dataset_name).name
-                )
+                f'Skip {Path(dataset_name).name} because it is not in the include_datasets list',
             )
             continue
         if exclude_dirs and dataset_name in exclude_dirs:
             logging.info(
-                'Skip {:s} because it is in the exclude_datasets list'.format(
-                    Path(dataset_name).name
-                )
+                f'Skip {Path(dataset_name).name} because it is in the exclude_datasets list',
             )
             continue
 
         for item_name in dataset:
             img_path, ann_path = dataset.get_item_paths(item_name)
             filename = Path(img_path).stem
-            mask_name = '{:s}.png'.format(filename)
+            mask_name = f'{filename}.png'
             mask_path = os.path.join(dataset.directory, 'masks_machine', mask_name)
 
             filenames.append(filename)
@@ -96,13 +94,15 @@ def read_sly_project(
             ann_paths.append(ann_path)
             dataset_names.append(dataset_name)
 
-    df = pd.DataFrame.from_dict({
-        'img_path': img_paths,
-        'ann_path': ann_paths,
-        'mask_path': mask_paths,
-        'dataset': dataset_names,
-        'filename': filenames,
-    })
+    df = pd.DataFrame.from_dict(
+        {
+            'img_path': img_paths,
+            'ann_path': ann_paths,
+            'mask_path': mask_paths,
+            'dataset': dataset_names,
+            'filename': filenames,
+        },
+    )
 
     return df
 
@@ -111,9 +111,9 @@ def mask_to_base64(mask: np.array):
     img_pil = Image.fromarray(np.array(mask, dtype=np.uint8))
     img_pil.putpalette([0, 0, 0, 255, 255, 255])
     bytes_io = io.BytesIO()
-    img_pil.save(bytes_io, format="PNG", transparency=0, optimize=0)
+    img_pil.save(bytes_io, format='PNG', transparency=0, optimize=0)
     bytes = bytes_io.getvalue()
-    return base64.b64encode(zlib.compress(bytes)).decode("utf-8")
+    return base64.b64encode(zlib.compress(bytes)).decode('utf-8')
 
 
 def base64_to_mask(s: str) -> np.ndarray:
@@ -121,28 +121,30 @@ def base64_to_mask(s: str) -> np.ndarray:
     n = np.frombuffer(z, np.uint8)
     img_decoded = cv2.imdecode(n, cv2.IMREAD_UNCHANGED)
     if (len(img_decoded.shape) == 3) and (img_decoded.shape[2] >= 4):
-        mask = img_decoded[:, :, 3].astype(np.uint8)        # 4-channel images
+        mask = img_decoded[:, :, 3].astype(np.uint8)  # 4-channel images
     elif len(img_decoded.shape) == 2:
-        mask = img_decoded.astype(np.uint8)                 # 1-channel images
+        mask = img_decoded.astype(np.uint8)  # 1-channel images
     else:
-        raise RuntimeError("Wrong internal mask format.")
+        raise RuntimeError('Wrong internal mask format')
     return mask
 
 
 def smooth_mask(
-        binary_mask: np.ndarray,
+    binary_mask: np.ndarray,
+    fill_holes: bool = False,
 ) -> np.ndarray:
-    # kernel = cv2.getStructuringElement(shape=cv2.MORPH_ELLIPSE, ksize=(5, 5))
-    # binary_mask = binary_fill_holes(binary_mask, structure=None)                      # FIXME: fills big holes
+    if fill_holes:
+        kernel = cv2.getStructuringElement(shape=cv2.MORPH_ELLIPSE, ksize=(5, 5))
+        binary_mask = binary_fill_holes(binary_mask, structure=kernel)
     binary_mask = binary_opening(binary_mask, structure=None)
     binary_mask = 255 * binary_mask.astype(np.uint8)
     return binary_mask
 
 
 def insert_mask(
-        mask: np.ndarray,
-        obj_mask: np.ndarray,
-        origin: List[int],
+    mask: np.ndarray,
+    obj_mask: np.ndarray,
+    origin: List[int],
 ) -> np.ndarray:
 
     x, y = origin
