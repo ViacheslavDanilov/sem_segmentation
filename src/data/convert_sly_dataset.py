@@ -1,67 +1,60 @@
 import json
-import argparse
+from typing import Any, Dict
 
-from tqdm import tqdm
-from sklearn.utils import class_weight
+import hydra
+from omegaconf import DictConfig, OmegaConf
 from sklearn.model_selection import train_test_split
+from sklearn.utils import class_weight
+from tqdm import tqdm
 
-from tools.supervisely_utils import *
+from src.data.utils_sly import *
 
-os.makedirs('logs', exist_ok=True)
-logging.basicConfig(
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%d.%m.%Y %I:%M:%S',
-    filename='logs/{:s}.log'.format(Path(__file__).stem),
-    filemode='w',
-    level=logging.INFO,
-)
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 
 def log_dataset(
-        dataset_name: str,
-        train_images: int,
-        val_images: int,
-        test_images: int,
+    dataset_name: str,
+    train_images: int,
+    val_images: int,
+    test_images: int,
 ) -> None:
-    logger.info('')
-    logger.info('Dataset      : {:s}'.format(dataset_name))
-    logger.info('Total images : {:d}'.format(train_images + val_images + test_images))
-    logger.info('Train images : {:d}'.format(train_images))
-    logger.info('Val images   : {:d}'.format(val_images))
-    logger.info('Test images  : {:d}'.format(test_images))
+
+    log.info('')
+    log.info(f'Dataset...............: {dataset_name}')
+    log.info(f'Total images..........: {train_images + val_images + test_images}')
+    log.info(f'Train images..........: {train_images}')
+    log.info(f'Val images............: {val_images}')
+    log.info(f'Test images...........: {test_images}')
 
 
-def main(
-        df_project: pd.DataFrame,
-        class_names: Tuple[str],
-        exclude_empty_masks: bool,
-        use_smoothing: bool,
-        train_size: float,
-        test_size: float,
-        seed: int,
-        save_dir: str,
-) -> None:
+def split_dataset(
+    df: pd.DataFrame,
+    train_size: float = 0.80,
+    test_size: float = 0.10,
+    seed: int = 11,
+):
 
     val_size = 1 - train_size - test_size
     assert train_size + val_size + test_size == 1, 'The sum of subset ratios must be equal to 1'
 
-    logger.info('Classes              : {}'.format(class_names))
-    logger.info('Number of classes    : {}'.format(len(class_names)))
-    logger.info('Exclude empty masks  : {}'.format(exclude_empty_masks))
-    logger.info('Output directory     : {}'.format(save_dir))
-    logger.info('Train/Val/Test split : {:.2f} / {:.2f} / {:.2f}'.format(train_size, val_size, test_size))
-    datasets = list(set(df_project.dataset))
-
-    # Split dataset into train, val and test subsets
+    datasets = list(set(df.dataset))
     df_train = pd.DataFrame()
     df_val = pd.DataFrame()
     df_test = pd.DataFrame()
     for dataset in datasets:
-        df_dataset = df_project[df_project.dataset == dataset]
+        df_dataset = df[df.dataset == dataset]
         df_dataset.reset_index(drop=True, inplace=True)
-        _df_train, df_val_test = train_test_split(df_dataset, train_size=train_size, random_state=seed)
-        _df_val, _df_test = train_test_split(df_val_test, test_size=test_size/(val_size + test_size), random_state=seed)
+        _df_train, df_val_test = train_test_split(
+            df_dataset,
+            train_size=train_size,
+            random_state=seed,
+        )
+        _df_val, _df_test = train_test_split(
+            df_val_test,
+            test_size=test_size / (val_size + test_size),
+            random_state=seed,
+        )
         log_dataset(dataset, len(_df_train), len(_df_val), len(_df_test))
         df_train = pd.concat([df_train, _df_train])
         df_val = pd.concat([df_val, _df_val])
@@ -79,30 +72,51 @@ def main(
     df_test.reset_index(drop=True, inplace=True)
     df_test['subset'] = 'test'
 
-    log_dataset('Final', len(df_train), len(df_val), len(df_test))
+    return df_train, df_val, df_test
 
-    os.makedirs(save_dir) if not os.path.isdir(save_dir) else False
-    df_final = pd.concat([df_train, df_val, df_test], axis=0)
-    df_final.reset_index(drop=True, inplace=True)
-    save_path = os.path.join(save_dir, 'dataset.xlsx')
-    df_final.to_excel(save_path, sheet_name='Dataset', index=False, startrow=0, startcol=0)
-    logger.info('Dataset metadata save to {:s}'.format(save_path))
 
-    # Create subset dirs
-    subset_dirs = {
+def save_metadata(
+    df: pd.DataFrame,
+    save_dir: str,
+) -> None:
+
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, 'metadata.xlsx')
+    df.reset_index(drop=True, inplace=True)
+    df.index += 1
+    df.to_excel(
+        save_path,
+        sheet_name='Data',
+        index=True,
+    )
+
+
+def create_subset_dirs(
+    save_dir: str,
+) -> None:
+
+    subdirs: Dict[str, Dict[Any, Any]] = {
         'img_dir': {},
         'ann_dir': {},
     }
-    for ds_dir in subset_dirs:
-        for subset_dir in ['train', 'val', 'test']:
-            _dir = os.path.join(save_dir, ds_dir, subset_dir)
-            subset_dirs[ds_dir][subset_dir] = _dir
-            os.makedirs(_dir) if not os.path.isdir(_dir) else False
+    for ds_dir in subdirs:
+        for subdir in ['train', 'val', 'test']:
+            _dir = os.path.join(save_dir, ds_dir, subdir)
+            subdirs[ds_dir][subdir] = _dir
+            os.makedirs(_dir, exist_ok=True)
 
-    # Iterate over image-annotation pairs
+
+def process_dataset(
+    df: pd.DataFrame,
+    class_names: Tuple[str],
+    palette: List[List[int]],
+    save_dir: str,
+    exclude_empty_masks: bool = False,
+    use_smoothing: bool = False,
+) -> np.array:
+
     data = np.array([], dtype=np.uint8)
-    palette = get_palette(class_names)
-    for idx, row in tqdm(df_final.iterrows(), desc='Image processing', unit=' images'):
+    for idx, row in tqdm(df.iterrows(), desc='Image processing', unit=' images'):
         filename = row['filename']
         img_path = row['img_path']
         ann_path = row['ann_path']
@@ -125,7 +139,7 @@ def main(
                 if use_smoothing:
                     obj_mask = smooth_mask(obj_mask)
                 obj_mask = obj_mask.astype(float)
-                obj_mask *= class_id/np.max(obj_mask)
+                obj_mask *= class_id / np.max(obj_mask)
                 obj_mask = obj_mask.astype(np.uint8)
 
                 mask = insert_mask(
@@ -133,19 +147,16 @@ def main(
                     obj_mask=obj_mask,
                     origin=obj['bitmap']['origin'],
                 )
-        logger.debug('Empty mask: {:s}'.format(Path(filename).name))
+        log.debug('Empty mask: {:s}'.format(Path(filename).name))
 
-        if (
-                np.sum(mask) == 0
-                and exclude_empty_masks
-        ):
+        if np.sum(mask) == 0 and exclude_empty_masks:
             pass
         else:
             subset = row['subset']
 
             # Save image
             img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-            img_save_path = os.path.join(save_dir, 'img_dir', subset, '{:s}.png'.format(filename))
+            img_save_path = os.path.join(save_dir, 'img_dir', subset, f'{filename}.png')
             cv2.imwrite(img_save_path, img)
 
             # Accumulate masks for class weight calculation
@@ -155,19 +166,33 @@ def main(
             # Save colored mask
             mask = Image.fromarray(mask).convert('P')
             mask.putpalette(np.array(palette, dtype=np.uint8))
-            mask_save_path = os.path.join(save_dir, 'ann_dir', subset, '{:s}.png'.format(filename))
+            mask_save_path = os.path.join(save_dir, 'ann_dir', subset, f'{filename}.png')
             mask.save(mask_save_path)
+    return data
 
-    # Compute class weights
-    class_weights = class_weight.compute_class_weight(
-        y=data,
-        classes=np.unique(data),
-        class_weight='balanced',
-    )
-    class_weights = list(class_weights)
-    class_weights = [round(x, 2) for x in class_weights]
-    logger.info('')
-    logging.info('Class weights: {}'.format(class_weights))
+
+def compute_class_weights(
+    data: np.ndarray,
+    class_names: List[str],
+    palette: List[List[int]],
+    save_dir: str,
+):
+
+    num_classes = np.unique(data)
+    try:
+        class_weights = class_weight.compute_class_weight(
+            y=data,
+            classes=num_classes,
+            class_weight='balanced',
+        )
+        class_weights = list(class_weights)
+        class_weights = [round(x, 2) for x in class_weights]
+        log.info('')
+        log.info(f'Class weights: {class_weights}')
+    except Exception as e:
+        class_weights = np.full([len(num_classes)], np.nan)
+        log.info('')
+        log.warning(f'Class weights: {class_weights}')
 
     class_meta = {}
     for name, color, weight in zip(class_names, palette, class_weights):
@@ -182,47 +207,67 @@ def main(
         json.dump(class_meta, f)
 
 
+@hydra.main(config_path=os.path.join(os.getcwd(), 'config'), config_name='data', version_base=None)
+def main(cfg: DictConfig) -> None:
+    log.info(f'Config:\n\n{OmegaConf.to_yaml(cfg)}')
+
+    df_sly = read_sly_project(
+        project_dir=cfg.convert.project_dir,
+        include_dirs=cfg.convert.include_dirs,
+        exclude_dirs=cfg.convert.exclude_dirs,
+    )
+
+    val_size = 1 - cfg.convert.train_size - cfg.convert.test_size
+
+    log.info(f'Classes...............: {cfg.convert.class_names}')
+    log.info(f'Number of classes.....: {len(cfg.convert.class_names)}')
+    log.info(f'Exclude empty masks...: {cfg.convert.exclude_empty_masks}')
+    log.info(f'Output directory......: {cfg.convert.save_dir}')
+    log.info(
+        f'Train/Val/Test split..: {cfg.convert.train_size:.2f} / {val_size:.2f} / {cfg.convert.test_size:.2f}',
+    )
+
+    # Split dataset and save its metadata
+    df_train, df_val, df_test = split_dataset(
+        df=df_sly,
+        train_size=cfg.convert.train_size,
+        test_size=cfg.convert.test_size,
+        seed=cfg.convert.seed,
+    )
+    df_final = pd.concat([df_train, df_val, df_test], axis=0)
+
+    # Save metadata
+    save_metadata(
+        df=df_final,
+        save_dir=cfg.convert.save_dir,
+    )
+    log_dataset('Final', len(df_train), len(df_val), len(df_test))
+
+    # Create dataset structure
+    create_subset_dirs(cfg.convert.save_dir)
+
+    # Process dataset iterating over image-annotation pairs
+    palette = get_palette(cfg.convert.class_names)
+    data = process_dataset(
+        df=df_final,
+        class_names=cfg.convert.class_names,
+        palette=palette,
+        exclude_empty_masks=cfg.convert.exclude_empty_masks,
+        use_smoothing=cfg.convert.use_smoothing,
+        save_dir=cfg.convert.save_dir,
+    )
+
+    # Compute class weights
+    compute_class_weights(
+        data=data,
+        class_names=cfg.convert.class_names,
+        palette=palette,
+        save_dir=cfg.convert.save_dir,
+    )
+
+    log.info('')
+    log.info('Complete')
+
+
 if __name__ == '__main__':
-
-    CLASSES = (
-        'Background',
-        'Capillary lumen',
-        'Capillary wall',
-        'Venule lumen',
-        'Venule wall',
-        'Arteriole lumen',
-        'Arteriole wall',
-    )
-
-    parser = argparse.ArgumentParser(description='Dataset conversion')
-    parser.add_argument('--project_dir', required=True, type=str)
-    parser.add_argument('--class_names', nargs='+', default=CLASSES, type=str)
-    parser.add_argument('--exclude_empty_masks', action='store_true')
-    parser.add_argument('--use_smoothing', action='store_true')
-    parser.add_argument('--include_dirs', nargs='+', default=None, type=str)
-    parser.add_argument('--exclude_dirs', nargs='+', default=None, type=str)
-    parser.add_argument('--train_size', default=0.80, type=float)
-    parser.add_argument('--test_size', default=0.10, type=float)
-    parser.add_argument('--seed', default=11, type=int)
-    parser.add_argument('--save_dir', required=True, type=str)
-    args = parser.parse_args()
-
-    df = read_sly_project(
-        project_dir=args.project_dir,
-        include_dirs=args.include_dirs,
-        exclude_dirs=args.exclude_dirs,
-    )
-
-    main(
-        df_project=df,
-        class_names=tuple(args.class_names),
-        exclude_empty_masks=args.exclude_empty_masks,
-        use_smoothing=args.use_smoothing,
-        train_size=args.train_size,
-        test_size=args.test_size,
-        seed=args.seed,
-        save_dir=args.save_dir,
-    )
-
-    logger.info('')
-    logger.info('Dataset conversion complete')
+    main()
