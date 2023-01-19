@@ -1,12 +1,12 @@
-import os
 import logging
-from pathlib import Path
+import os
 from datetime import datetime
-from typing import List, Tuple, Dict, Union, Optional
+from glob import glob
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
-from glob import glob
 
 try:
     import pytesseract
@@ -20,7 +20,8 @@ def get_file_list(
     dirname_template: str = '',
     filename_template: str = '',
 ) -> List[str]:
-    """
+    """Get a list of files in the specified directory with specific extensions.
+
     Args:
         src_dirs: directory(s) with files inside
         ext_list: extension(s) used for a search
@@ -30,8 +31,8 @@ def get_file_list(
         all_files: a list of file paths
     """
     all_files = []
-    src_dirs = [src_dirs, ] if isinstance(src_dirs, str) else src_dirs
-    ext_list = [ext_list, ] if isinstance(ext_list, str) else ext_list
+    src_dirs = [src_dirs] if isinstance(src_dirs, str) else src_dirs
+    ext_list = [ext_list] if isinstance(ext_list, str) else ext_list
     for src_dir in src_dirs:
         for root, dirs, files in os.walk(src_dir):
             for file in files:
@@ -39,10 +40,9 @@ def get_file_list(
                 file_ext = file_ext.lower()
                 dir_name = os.path.basename(root)
                 if (
-                        file_ext in ext_list
-                        and dirname_template in dir_name
-                        and filename_template in file
-
+                    file_ext in ext_list
+                    and dirname_template in dir_name
+                    and filename_template in file
                 ):
                     file_path = os.path.join(root, file)
                     all_files.append(file_path)
@@ -60,17 +60,13 @@ def get_dir_list(
     for series_dir in _dir_list:
         if include_dirs and Path(series_dir).name not in include_dirs:
             logging.info(
-                'Skip {:s} because it is not in the included_dirs list'.format(
-                    Path(series_dir).name
-                )
+                f'Skip {Path(series_dir).name} because it is not in the included_dirs list',
             )
             continue
 
         if exclude_dirs and Path(series_dir).name in exclude_dirs:
             logging.info(
-                'Skip {:s} because it is in the excluded_dirs list'.format(
-                    Path(series_dir).name
-                )
+                f'Skip {Path(series_dir).name} because it is in the excluded_dirs list',
             )
             continue
 
@@ -80,8 +76,8 @@ def get_dir_list(
 
 def extract_modality_info(
     img: np.ndarray,
-    x_lims: Tuple[int] = (0.0, 0.5),
-    y_lims: Tuple[int] = (0.9375, 1.0),
+    x_lims: Tuple[float, float] = (0.0, 0.5),
+    y_lims: Tuple[float, float] = (0.9375, 1.0),
 ) -> Dict:
 
     keys = [
