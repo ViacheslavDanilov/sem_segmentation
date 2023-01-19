@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import cv2
-import numpy as np
 
 try:
     import pytesseract
@@ -75,7 +74,7 @@ def get_dir_list(
 
 
 def extract_modality_info(
-    img: np.ndarray,
+    img_path: str,
     x_lims: Tuple[float, float] = (0.0, 0.5),
     y_lims: Tuple[float, float] = (0.9375, 1.0),
 ) -> Dict:
@@ -87,6 +86,7 @@ def extract_modality_info(
     info = {key: float('nan') for key in keys}
 
     try:
+        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         y1 = int(y_lims[0] * img.shape[0])
         y2 = int(y_lims[1] * img.shape[0])
@@ -100,7 +100,7 @@ def extract_modality_info(
         info['magnification'] = txt_info[2]
 
     except Exception as e:
-        logging.debug('Failed to retrieve modality info')
+        logging.warning(f'Failed to retrieve modality info: {Path(img_path).name}')
 
     return info
 

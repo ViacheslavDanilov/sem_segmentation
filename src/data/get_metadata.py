@@ -1,26 +1,30 @@
 import json
-import argparse
 
+import hydra
+from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
-from tools.supervisely_utils import *
-from tools.utils import extract_modality_info
+from src.data.utils import extract_modality_info
+from src.data.utils_sly import *
 
-os.makedirs('logs', exist_ok=True)
-logging.basicConfig(
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%d.%m.%Y %I:%M:%S',
-    filename='logs/{:s}.log'.format(Path(__file__).stem),
-    filemode='w',
-    level=logging.INFO,
-)
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 
-def main(
-        df_project: pd.DataFrame,
-        save_dir: str,
-) -> None:
+@hydra.main(config_path=os.path.join(os.getcwd(), 'config'), config_name='data', version_base=None)
+def main(cfg: DictConfig) -> None:
+    log.info(f'Config:\n\n{OmegaConf.to_yaml(cfg)}')
+
+    try:
+        pass
+    except ModuleNotFoundError:
+        log.warning('Extraction of modality info is not available')
+
+    df_sly = read_sly_project(
+        project_dir=cfg.meta.project_dir,
+        include_dirs=cfg.meta.include_dirs,
+        exclude_dirs=cfg.meta.exclude_dirs,
+    )
 
     keys = [
         'img_path',
@@ -32,8 +36,8 @@ def main(
         'energy',
         'magnification',
         'class',
-        'origin_x',
-        'origin_y',
+        'x_c',
+        'y_c',
         'obj_height',
         'obj_width',
         'area_abs',
@@ -42,7 +46,7 @@ def main(
 
     # Iterate over annotations
     meta = []
-    for idx, row in tqdm(df_project.iterrows(), desc='Annotation processing', unit=' JSONs'):
+    for idx, row in tqdm(df_sly.iterrows(), desc='Annotation processing', unit=' JSONs'):
         dataset = row['dataset']
         filename = row['filename']
         img_path = row['img_path']
@@ -52,8 +56,7 @@ def main(
         ann_data = json.load(f)
         img_height = ann_data['size']['height']
         img_width = ann_data['size']['width']
-        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-        modality_info = extract_modality_info(img)
+        modality_info = extract_modality_info(img_path)
 
         # Iterate over objects
         for obj in ann_data['objects']:
@@ -74,8 +77,8 @@ def main(
             obj_meta['energy'] = modality_info['energy']
             obj_meta['magnification'] = modality_info['magnification']
             obj_meta['class'] = class_name
-            obj_meta['origin_x'] = obj_origin[0]
-            obj_meta['origin_y'] = obj_origin[1]
+            obj_meta['x_c'] = obj_origin[0]
+            obj_meta['y_c'] = obj_origin[1]
             obj_meta['obj_height'] = obj_mask.shape[0]
             obj_meta['obj_width'] = obj_mask.shape[1]
             obj_meta['area_abs'] = area_abs
@@ -85,34 +88,11 @@ def main(
 
     df_meta = pd.DataFrame(meta)
     df_meta.sort_values(by=['filename'], inplace=True)
-    os.makedirs(save_dir) if not os.path.isdir(save_dir) else False
-    save_path = os.path.join(save_dir, 'metadata.xlsx')
+    os.makedirs(cfg.meta.save_dir) if not os.path.isdir(cfg.meta.save_dir) else False
+    save_path = os.path.join(cfg.meta.save_dir, 'metadata.xlsx')
     df_meta.to_excel(save_path, sheet_name='Metadata', index=False, startrow=0, startcol=0)
+    log.info('Metadata retrieved')
 
 
 if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser(description='Metadata extraction')
-    parser.add_argument('--project_dir', required=True, type=str)
-    parser.add_argument('--include_dirs', nargs='+', default=None, type=str)
-    parser.add_argument('--exclude_dirs', nargs='+', default=None, type=str)
-    parser.add_argument('--save_dir', required=True, type=str)
-    args = parser.parse_args()
-
-    try:
-        import pytesseract
-    except ModuleNotFoundError:
-        logging.info('Extraction of modality info is not available')
-
-    df = read_sly_project(
-        project_dir=args.project_dir,
-        include_dirs=args.include_dirs,
-        exclude_dirs=args.exclude_dirs,
-    )
-
-    main(
-        df_project=df,
-        save_dir=args.save_dir,
-    )
-
-    logger.info('Metadata retrieved')
+    main()
