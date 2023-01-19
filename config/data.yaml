@@ -7,3 +7,23 @@ meta:
   include_dirs: []
   exclude_dirs: []
   save_dir: data/sly
+
+convert:
+  project_dir: data/sly
+  include_dirs: []
+  exclude_dirs: []
+  class_names: [
+    'Background',
+    'Capillary lumen',
+    'Capillary wall',
+    'Venule lumen',
+    'Venule wall',
+    'Arteriole lumen',
+    'Arteriole wall',
+  ]
+  exclude_empty_masks: false
+  use_smoothing: false
+  train_size: 0.80
+  test_size: 0.10
+  seed: 11
+  save_dir: data/final
