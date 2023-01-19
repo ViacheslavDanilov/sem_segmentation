@@ -15,7 +15,21 @@ chmod +x Miniconda3-latest-Linux-x86_64.sh
 ./Miniconda3-latest-Linux-x86_64.sh
 ```
 
-Step 2: Clone the repository, create a conda environment and install the requirements for the repository
+Step 2: Install Tesseract and verify that the installation is correct
+
+- Linux
+``` bash
+sudo apt install tesseract-ocr
+tesseract -v
+```
+
+- macOS
+``` bash
+brew install tesseract
+tesseract -v
+```
+
+Step 3: Clone the repository, create a conda environment and install the requirements for the repository
 ``` bash
 git clone https://github.com/ViacheslavDanilov/sem_segmentation.git
 cd sem_segmentation
@@ -23,14 +37,15 @@ chmod +x create_env.sh
 source create_env.sh
 ```
 
-Step 3: Initialize git hooks using the pre-commit framework
+Step 4: Initialize git hooks using the pre-commit framework
 ``` bash
 pre-commit install
 ```
 
-Step 4 (Optional): Download a raw dataset using DVC
+Step 5 (optional): Download both raw and Supervisely datasets using DVC
 ``` bash
 dvc pull dvc/data/raw.dvc
+dvc pull dvc/data/sly.dvc
 ```
 NOTE: Since data storage is organized through Google Drive, you should first request access to the [DVC repository](https://drive.google.com/drive/folders/1nYxQ6IXYdatgxXMsPzV-xjdv6PLjvMZK?usp=share_link).
 
